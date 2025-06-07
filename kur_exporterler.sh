@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [[ $EUID -ne 0 ]]; then
+  echo "❌ Bu script root yetkisiyle (sudo) çalıştırılmalı."
+  exit 1
+fi
+
 echo "🔧 Exporter Kurulum Scripti"
 
 read -p "📛 Kullanıcı adı (örnek: mocky): " USER
@@ -21,7 +26,7 @@ tar xvf ${NODE_ARCHIVE}
 rm ${NODE_ARCHIVE}
 
 echo "📝 Node Exporter systemd servis dosyası yazılıyor..."
-sudo tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
+tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
 [Unit]
 Description=Node Exporter
 After=network.target
@@ -35,38 +40,39 @@ WantedBy=multi-user.target
 EOF
 
 echo "🔄 Node Exporter servisi başlatılıyor..."
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable node_exporter
-sudo systemctl restart node_exporter
-sudo systemctl status node_exporter --no-pager
+systemctl daemon-reexec
+systemctl daemon-reload
+systemctl enable node_exporter
+systemctl restart node_exporter
+systemctl status node_exporter --no-pager
 
 ### --- DOCKER ve NVIDIA TOOLKIT ---
 echo "🐳 Docker ve NVIDIA Container Toolkit kuruluyor..."
-sudo apt-get update
-sudo apt-get install -y docker.io curl gnupg
+apt-get update
+apt-get install -y docker.io curl gnupg
 
 # NVIDIA Container Toolkit Kurulumu (Ubuntu 20.04 / 22.04)
 echo "🔑 NVIDIA GPG anahtarı ve repo ekleniyor..."
 distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
 curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
   sed 's|^deb |deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] |' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
+apt-get update
+apt-get install -y nvidia-container-toolkit
 
 echo "⚙️ NVIDIA runtime docker'a entegre ediliyor..."
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+nvidia-ctk runtime configure --runtime=docker
+systemctl restart docker
 
 ### --- DCGM EXPORTER ---
 echo "🐳 DCGM Exporter container başlatılıyor..."
 docker pull nvcr.io/nvidia/k8s/dcgm-exporter:latest
-docker run -d \
+sudo docker rm -f dcgm-exporter 2>/dev/null || true
+sudo docker run -d \
   --restart unless-stopped \
   --gpus all \
   -p ${DCGM_PORT}:9400 \
